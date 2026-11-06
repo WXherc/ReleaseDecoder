@@ -910,7 +910,7 @@ body {
 /* section bar on MyRelease + section-excerpt popup (raw PDF pages in a sheet) */
 /* pinned to the bottom of the screen while scrolling MyRelease (frosted strip) */
 .sec-bar { position: sticky; bottom: 0; z-index: 15; display: flex; gap: 10px; overflow-x: auto;
-  margin: 8px -14px -40px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  margin: 8px -14px -40px; padding: 10px 14px calc(5px + env(safe-area-inset-bottom) / 2);
   background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: saturate(160%) blur(16px);
   backdrop-filter: saturate(160%) blur(16px); border-top: 1px solid var(--hairline); }
 .sec-bar:empty { display: none; }
@@ -1039,7 +1039,7 @@ body {
 :root[data-layout="phone"] .ops-dep { display: flex; gap: 14px; flex: 1; border-left: 1px solid var(--hairline); padding-left: 14px; }
 
 /* bottom bar: 7 icon-over-label buttons */
-:root[data-layout="phone"] .sec-bar { gap: 5px; margin: 8px -10px -40px; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); }
+:root[data-layout="phone"] .sec-bar { gap: 5px; margin: 8px -10px -40px; padding: 7px 8px calc(3.5px + env(safe-area-inset-bottom) / 2); }
 :root[data-layout="phone"] .sec-btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 3px; padding: 8px 1px;
   font-size: 9.5px; letter-spacing: -.2px; border-radius: 12px; }
 :root[data-layout="phone"] .sec-btn svg { width: 20px; height: 20px; }
@@ -1052,6 +1052,12 @@ body {
 #releaseView > .sec-bar { margin-top: auto; }
 #releaseView > .grid { margin-bottom: 8px; }
 
+/* iCloud mirror */
+.ck-bar, .ck-menu { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--secondary); background: var(--accent-soft); }
+.ck-bar[hidden], .ck-menu[hidden] { display: none; }
+#ckBtn { color: var(--accent); }
+
   </style>
 </head>
 <body>
@@ -1063,10 +1069,19 @@ body {
     </div>
     <div class="topbar-right">
       <button id="importBtn" class="icon-btn" title="Import release" aria-label="Import release"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2.5H8a2.5 2.5 0 0 0-2.5 2.5v6M14 2.5V8h5.5M14 2.5 19.5 8v11a2.5 2.5 0 0 1-2.5 2.5h-4"/><circle cx="7" cy="17.5" r="4.5"/><path d="M7 15.5v4M5 17.5h4"/></svg><span>PDF</span></button>
+      <button id="ckBtn" class="icon-btn" title="iCloud sync on" aria-label="iCloud sync" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z"/><path d="m9.5 13.5 2 2 3.5-3.5"/></svg></button>
       <button id="themeBtn" class="icon-btn" title="Appearance">◐</button>
     </div>
     <input id="fileInput" type="file" accept="application/pdf" hidden />
   </header>
+
+  <!-- iCloud mirror: sign in with the same Apple ID as the iPhone / iPad app -->
+  <div id="ckBar" class="ck-bar" hidden>
+    <span>☁︎ Mirror the release open in your iPhone / iPad app</span><div id="ck-sign-in"></div>
+  </div>
+  <div id="ckMenu" class="ck-menu" hidden>
+    <span>Following your app's release via iCloud</span><div id="ck-sign-out"></div>
+  </div>
 
   <div id="sampleBanner" class="sample-banner" hidden>
     ✦ SAMPLE DATA <span>— import a release (＋PDF) to see your own</span>
@@ -1747,8 +1762,103 @@ async function fetchMETAR(icao) {
   }
 }
 
+// ================= cloud.js =================
+// cloud.js — mirror the iOS app's current release from iCloud (CloudKit JS).
+// The app keeps ONE record in the user's private database: type CurrentRelease,
+// recordName "current-release", fields asset (the release PDF), flight, updatedAt.
+// The web follows it read-only: sign in with the same Apple ID, and whenever the
+// app imports a newer release the page loads it (checked on open, when the tab comes
+// back to the foreground, and every minute while visible — no background traffic).
+//
+// Dormant until CK.apiToken is set. The token is NOT a secret: CloudKit only accepts
+// it from the allowed origin set on it, and every read needs the user's Apple ID.
+
+const CK = {
+  container: 'iCloud.Vortex-Property.Release-Decoder',
+  apiToken: '9146944b859b91472fe5622e093fa80c97bccccc77079a86dc0e13dab88a6683',  // CloudKit Console → Tokens & Keys → "Website" (Development; origin wxherc.github.io)
+  // Xcode-installed app = 'development'; TestFlight / App Store app = 'production'.
+  // Override per visit with ?ck=development|production
+  environment: 'development',
+};
+const POLL_MS = 60000;
+
+let container = null, lastStamp = 0, timer = null, onVisible = null;
+
+function cloudConfigured() { return !!CK.apiToken; }
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.async = true;
+    s.onload = res; s.onerror = () => rej(new Error('CloudKit JS failed to load'));
+    document.head.appendChild(s);
+  });
+}
+
+// onRelease(bytes, {stamp, flight}) applies a newer release; onStatus('in'|'out'|'error');
+// stamp = the updatedAt (ms) of the release currently shown, newest-wins like the app.
+async function startCloudSync({ onRelease, onStatus, stamp = 0 }) {
+  if (!CK.apiToken) return;
+  lastStamp = stamp || 0;
+  const env = (location.search.match(/[?&]ck=(development|production)/) || [])[1] || CK.environment;
+  try {
+    await loadScript('https://cdn.apple-cloudkit.com/ck/2/cloudkit.js');
+    CloudKit.configure({
+      containers: [{
+        containerIdentifier: CK.container,
+        apiTokenAuth: {
+          apiToken: CK.apiToken, persist: true,
+          signInButton: { id: 'ck-sign-in', theme: 'black' },
+          signOutButton: { id: 'ck-sign-out', theme: 'white-with-outline' },
+        },
+        environment: env,
+      }],
+    });
+    container = CloudKit.getDefaultContainer();
+    const signedIn = async () => {
+      onStatus('in');
+      await check(onRelease);
+      arm(onRelease);
+      container.whenUserSignsOut().then(() => { disarm(); waitForSignIn(); });
+    };
+    const waitForSignIn = () => { onStatus('out'); container.whenUserSignsIn().then(signedIn).catch(() => {}); };
+    (await container.setUpAuth()) ? signedIn() : waitForSignIn();
+  } catch (e) { console.warn('cloudkit', e); onStatus('error'); }
+}
+
+// The web's own imports win until the app imports something newer.
+function markLocal(stamp) { lastStamp = Math.max(lastStamp, stamp); }
+
+async function check(onRelease) {
+  if (!container || document.hidden) return;
+  try {
+    const r = await container.privateCloudDatabase.fetchRecords(['current-release']);
+    if (r.hasErrors || !r.records.length) return;          // no release synced yet
+    const rec = r.records[0], f = rec.fields;
+    const stamp = (f.updatedAt && f.updatedAt.value) || (rec.modified && rec.modified.timestamp) || 0;
+    if (!f.asset || stamp <= lastStamp) return;
+    const url = f.asset.value.downloadURL.replace('${f}', 'release.pdf');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('asset ' + res.status);
+    const bytes = await res.arrayBuffer();
+    lastStamp = stamp;
+    await onRelease(bytes, { stamp, flight: f.flight && f.flight.value });
+  } catch (e) { console.warn('cloudkit', e); }
+}
+function arm(onRelease) {
+  disarm();
+  timer = setInterval(() => check(onRelease), POLL_MS);
+  onVisible = () => { if (!document.hidden) check(onRelease); };
+  document.addEventListener('visibilitychange', onVisible);
+}
+function disarm() {
+  clearInterval(timer); timer = null;
+  if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+  onVisible = null;
+}
+
 // ================= app.js =================
 // app.js — Release Decoder (web prototype)
+
 
 
 
@@ -2210,6 +2320,7 @@ async function showRouteMap() {
       btn.classList.add('active');
     } catch (err) { toast('Radar unavailable'); }
   };
+  backdrop.querySelector('#radarToggle').click();   // radar on by default
 }
 
 // ---------- Raw PDF ----------
@@ -2293,6 +2404,7 @@ async function importFile(file) {
   try {
     await loadBytes(bytes, { isSample: false });
     await idbSet('release', bytes); await idbSet('isSample', false);
+    const now = Date.now(); markLocal(now); await idbSet('cloudStamp', now);
     toast('Release imported');
   } catch (e) { console.error(e); toast('Could not read that PDF'); }
 }
@@ -2331,7 +2443,27 @@ async function init() {
   } catch (e) { console.warn('idb', e); }
   await loadSample();
 }
-init().catch(e => { console.error(e); releaseView.innerHTML = '<div class="empty">Failed to start: ' + esc(e.message) + '</div>'; });
+
+// ---------- iCloud mirror (follow the iPhone / iPad app's current release) ----------
+async function initCloud() {
+  if (!cloudConfigured()) return;
+  let stamp = 0; try { stamp = (await idbGet('cloudStamp')) || 0; } catch (e) {}
+  startCloudSync({
+    stamp,
+    onStatus: (s) => {
+      $('#ckBar').hidden = s !== 'out';
+      $('#ckBtn').hidden = s !== 'in';
+      if (s === 'error') toast('iCloud sync unavailable');
+    },
+    onRelease: async (bytes, { stamp, flight }) => {
+      await loadBytes(bytes, { isSample: false });
+      await idbSet('release', bytes); await idbSet('isSample', false); await idbSet('cloudStamp', stamp);
+      toast(`Synced ${flight ? 'Flight ' + flight : 'release'} from iCloud`);
+    },
+  });
+}
+$('#ckBtn').onclick = () => { $('#ckMenu').hidden = !$('#ckMenu').hidden; };
+init().then(initCloud).catch(e => { console.error(e); releaseView.innerHTML = '<div class="empty">Failed to start: ' + esc(e.message) + '</div>'; });
 
   </script>
 </body>
