@@ -1842,23 +1842,37 @@ async function startCloudSync({ onRelease, onStatus, stamp = 0 }) {
 function markLocal(stamp) { lastStamp = Math.max(lastStamp, stamp); }
 
 // Upload a release imported on the web as THE current release (overwrites the one record).
+// Apple's asset-upload server refuses browser uploads (no CORS on cws.icloud-content.com),
+// so the web stores the PDF bytes in the record itself: `pdfData` (BYTES) + `dataStamp`.
+// `dataStamp === updatedAt` marks pdfData as the newest copy; an app import later sets a new
+// updatedAt + asset, so readers fall back to the asset. Records cap at 1 MB.
+const MAX_WEB_BYTES = 900000;
+function toB64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function fromB64(b64) { const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return u8.buffer; }
+
 async function uploadRelease(bytes, flight) {
   if (!container || !signedInNow) return false;
+  if (bytes.byteLength > MAX_WEB_BYTES) {
+    report(`Not shared: release is ${(bytes.byteLength / 1e6).toFixed(1)} MB (web limit ${MAX_WEB_BYTES / 1e6} MB)`);
+    return false;
+  }
   const db = container.privateCloudDatabase;
   const stamp = Date.now();
   try {
     const cur = await db.fetchRecords(['current-release']);
     const changeTag = !cur.hasErrors && cur.records[0] ? cur.records[0].recordChangeTag : undefined;
-    const rec = {
-      recordType: 'CurrentRelease', recordName: 'current-release',
-      fields: {
-        asset: { value: new File([bytes], 'release.pdf', { type: 'application/pdf' }) },
-        flight: { value: String(flight || ''), type: 'STRING' },
-        updatedAt: { value: stamp, type: 'TIMESTAMP' },
-      },
+    const fields = {
+      pdfData: { value: toB64(new Uint8Array(bytes)), type: 'BYTES' },
+      dataStamp: { value: stamp, type: 'TIMESTAMP' },
+      updatedAt: { value: stamp, type: 'TIMESTAMP' },
+      flight: { value: String(flight || ''), type: 'STRING' },
     };
-    if (changeTag) rec.recordChangeTag = changeTag;
-    const r = await db.saveRecords([rec]);
+    const save = (f) => db.saveRecords([Object.assign({ recordType: 'CurrentRelease', recordName: 'current-release', fields: f },
+      changeTag ? { recordChangeTag: changeTag } : {})]);
+    // Also drop the app's old attached PDF so nothing can mistake it for the newest;
+    // if iCloud won't clear it, the dataStamp rule above still picks the right copy.
+    let r = await save(Object.assign({ asset: { value: null } }, fields));
+    if (r.hasErrors) r = await save(fields);
     if (r.hasErrors) {
       const e = r.errors[0] || {};
       report(`Upload failed: ${e.ckErrorCode || e.serverErrorCode || 'ERROR'}${e.reason ? ' — ' + e.reason : ''}`);
@@ -1867,11 +1881,8 @@ async function uploadRelease(bytes, flight) {
     lastStamp = stamp;
     report(`Shared Flight ${flight || '?'} to your devices`);
     return true;
-  } catch (e) { console.warn('cloudkit', e); report(`Upload failed: ${e && e.message ? e.message : e}`); return false; }
+  } catch (e) { console.warn('cloudkit', e); report(`Upload failed: ${e && e.reason ? e.reason : e && e.message ? e.message : e}`); return false; }
 }
-
-// Manual "Sync now": ignores the hidden-tab guard and the newest-wins stamp check.
-function syncNow() { return check(applyFn, true); }
 
 async function check(onRelease, force = false) {
   if (!container || (!force && document.hidden)) return;
@@ -1886,16 +1897,21 @@ async function check(onRelease, force = false) {
         : `iCloud error: ${code}${e.reason ? ' — ' + e.reason : ''}`);
     }
     const rec = r.records[0], f = rec && rec.fields;
-    if (!f || !f.asset) return report(`No release in iCloud (${env}) yet`);
-    const stamp = (f.updatedAt && f.updatedAt.value) || (rec.modified && rec.modified.timestamp) || 0;
+    const stamp = (f && f.updatedAt && f.updatedAt.value) || (rec && rec.modified && rec.modified.timestamp) || 0;
+    const webCopy = f && f.pdfData && f.dataStamp && f.dataStamp.value === stamp;   // saved by a browser
+    if (!f || (!webCopy && !(f.asset && f.asset.value))) return report(`No release in iCloud (${env}) yet`);
     const flight = f.flight && f.flight.value;
     const when = new Date(stamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     if (!force && stamp <= lastStamp) return report(`Up to date — Flight ${flight || '?'} (uploaded ${when})`);
-    step = 'download the PDF';
-    const url = f.asset.value.downloadURL.replace('${f}', 'release.pdf');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const bytes = await res.arrayBuffer();
+    let bytes;
+    if (webCopy) bytes = fromB64(f.pdfData.value);
+    else {
+      step = 'download the PDF';
+      const url = f.asset.value.downloadURL.replace('${f}', 'release.pdf');
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      bytes = await res.arrayBuffer();
+    }
     step = 'open the PDF';
     lastStamp = stamp;
     await onRelease(bytes, { stamp, flight });
