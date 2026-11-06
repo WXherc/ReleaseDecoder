@@ -1061,6 +1061,12 @@ body {
 .ck-info b { color: var(--text); }
 #ckStatus { font-weight: 500; font-size: 12px; }
 #ckSyncNow { background: var(--accent); color: #fff; }
+.ck-bar { position: relative; padding-right: 44px; }
+.ck-x { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 0;
+  border-radius: 999px; background: transparent; color: var(--secondary); font-size: 15px; cursor: pointer; }
+.ck-x:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+#ckBtn.off { color: var(--secondary); }
+#ckBtn.off svg path:last-child { display: none; }
 
   </style>
 </head>
@@ -1082,6 +1088,7 @@ body {
   <!-- iCloud mirror: sign in with the same Apple ID as the iPhone / iPad app -->
   <div id="ckBar" class="ck-bar" hidden>
     <span>☁︎ Mirror the release open in your iPhone / iPad app</span><div id="ck-sign-in"></div>
+    <button id="ckClose" class="ck-x" title="Not now" aria-label="Close">✕</button>
   </div>
   <div id="ckMenu" class="ck-menu" hidden>
     <div class="ck-info"><b>Following your app's release via iCloud</b><span id="ckStatus">Checking…</span></div>
@@ -2535,8 +2542,13 @@ async function initCloud() {
         $('#ckStatus').textContent = `${cloudState.message}${t ? ' · checked ' + t : ''} · ${cloudState.env}`;
         return;
       }
-      $('#ckBar').hidden = s !== 'out';
-      $('#ckBtn').hidden = s !== 'in';
+      ckSignedIn = s === 'in';
+      // Signed out: offer the sign-in strip unless the user closed it; the cloud
+      // button (no check mark) stays in the top bar to bring it back any time.
+      $('#ckBar').hidden = s !== 'out' || ckBarDismissed();
+      $('#ckBtn').hidden = s === 'error';
+      $('#ckBtn').classList.toggle('off', !ckSignedIn);
+      if (ckSignedIn) $('#ckMenu').hidden = true;
       if (s === 'error') toast('iCloud sync unavailable');
     },
     onRelease: async (bytes, { stamp, flight }) => {
@@ -2546,7 +2558,18 @@ async function initCloud() {
     },
   });
 }
-$('#ckBtn').onclick = () => { $('#ckMenu').hidden = !$('#ckMenu').hidden; };
+let ckSignedIn = false;
+function ckBarDismissed() { try { return localStorage.getItem('ckBarDismissed') === '1'; } catch (e) { return false; } }
+$('#ckBtn').onclick = () => {
+  if (ckSignedIn) { $('#ckMenu').hidden = !$('#ckMenu').hidden; return; }
+  const bar = $('#ckBar'); bar.hidden = !bar.hidden;
+  if (!bar.hidden) { try { localStorage.removeItem('ckBarDismissed'); } catch (e) {} }
+};
+$('#ckClose').onclick = () => {
+  $('#ckBar').hidden = true;
+  try { localStorage.setItem('ckBarDismissed', '1'); } catch (e) {}
+  toast('Tap the cloud button to turn on iCloud sync later');
+};
 $('#ckSyncNow').onclick = async () => {
   const b = $('#ckSyncNow'); b.disabled = true; b.textContent = 'Syncing…';
   await syncNow();
