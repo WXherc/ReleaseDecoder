@@ -1057,6 +1057,10 @@ body {
   padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--secondary); background: var(--accent-soft); }
 .ck-bar[hidden], .ck-menu[hidden] { display: none; }
 #ckBtn { color: var(--accent); }
+.ck-info { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.ck-info b { color: var(--text); }
+#ckStatus { font-weight: 500; font-size: 12px; }
+#ckSyncNow { background: var(--accent); color: #fff; }
 
   </style>
 </head>
@@ -1080,7 +1084,8 @@ body {
     <span>☁︎ Mirror the release open in your iPhone / iPad app</span><div id="ck-sign-in"></div>
   </div>
   <div id="ckMenu" class="ck-menu" hidden>
-    <span>Following your app's release via iCloud</span><div id="ck-sign-out"></div>
+    <div class="ck-info"><b>Following your app's release via iCloud</b><span id="ckStatus">Checking…</span></div>
+    <button id="ckSyncNow" class="pill">Sync now</button><div id="ck-sign-out"></div>
   </div>
 
   <div id="sampleBanner" class="sample-banner" hidden>
@@ -1782,7 +1787,11 @@ const CK = {
 };
 const POLL_MS = 60000;
 
-let container = null, lastStamp = 0, timer = null, onVisible = null;
+let container = null, lastStamp = 0, timer = null, onVisible = null, applyFn = null, statusFn = () => {};
+let env = 'development';
+// Last check result, shown in the iCloud menu so a failed sync is visible, not silent.
+const cloudState = { env: '', lastCheck: null, message: 'Not checked yet' };
+function report(msg) { cloudState.lastCheck = new Date(); cloudState.message = msg; statusFn('report'); }
 
 function cloudConfigured() { return !!CK.apiToken; }
 
@@ -1799,7 +1808,8 @@ function loadScript(src) {
 async function startCloudSync({ onRelease, onStatus, stamp = 0 }) {
   if (!CK.apiToken) return;
   lastStamp = stamp || 0;
-  const env = (location.search.match(/[?&]ck=(development|production)/) || [])[1] || CK.environment;
+  env = (location.search.match(/[?&]ck=(development|production)/) || [])[1] || CK.environment;
+  cloudState.env = env; applyFn = onRelease; statusFn = onStatus;
   try {
     await loadScript('https://cdn.apple-cloudkit.com/ck/2/cloudkit.js');
     CloudKit.configure({
@@ -1828,21 +1838,40 @@ async function startCloudSync({ onRelease, onStatus, stamp = 0 }) {
 // The web's own imports win until the app imports something newer.
 function markLocal(stamp) { lastStamp = Math.max(lastStamp, stamp); }
 
-async function check(onRelease) {
-  if (!container || document.hidden) return;
+// Manual "Sync now": ignores the hidden-tab guard and the newest-wins stamp check.
+function syncNow() { return check(applyFn, true); }
+
+async function check(onRelease, force = false) {
+  if (!container || (!force && document.hidden)) return;
+  let step = 'read iCloud';
   try {
     const r = await container.privateCloudDatabase.fetchRecords(['current-release']);
-    if (r.hasErrors || !r.records.length) return;          // no release synced yet
-    const rec = r.records[0], f = rec.fields;
+    if (r.hasErrors) {
+      const e = r.errors[0] || {};
+      const code = e.ckErrorCode || e.serverErrorCode || 'ERROR';
+      return report(code === 'NOT_FOUND'
+        ? `No release in iCloud (${env}) yet — import one in the app`
+        : `iCloud error: ${code}${e.reason ? ' — ' + e.reason : ''}`);
+    }
+    const rec = r.records[0], f = rec && rec.fields;
+    if (!f || !f.asset) return report(`No release in iCloud (${env}) yet`);
     const stamp = (f.updatedAt && f.updatedAt.value) || (rec.modified && rec.modified.timestamp) || 0;
-    if (!f.asset || stamp <= lastStamp) return;
+    const flight = f.flight && f.flight.value;
+    const when = new Date(stamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!force && stamp <= lastStamp) return report(`Up to date — Flight ${flight || '?'} (uploaded ${when})`);
+    step = 'download the PDF';
     const url = f.asset.value.downloadURL.replace('${f}', 'release.pdf');
     const res = await fetch(url);
-    if (!res.ok) throw new Error('asset ' + res.status);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const bytes = await res.arrayBuffer();
+    step = 'open the PDF';
     lastStamp = stamp;
-    await onRelease(bytes, { stamp, flight: f.flight && f.flight.value });
-  } catch (e) { console.warn('cloudkit', e); }
+    await onRelease(bytes, { stamp, flight });
+    report(`Loaded Flight ${flight || '?'} (uploaded ${when})`);
+  } catch (e) {
+    console.warn('cloudkit', e);
+    report(`Couldn't ${step}: ${e && e.message ? e.message : e}`);
+  }
 }
 function arm(onRelease) {
   disarm();
@@ -2451,6 +2480,11 @@ async function initCloud() {
   startCloudSync({
     stamp,
     onStatus: (s) => {
+      if (s === 'report') {
+        const t = cloudState.lastCheck ? cloudState.lastCheck.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        $('#ckStatus').textContent = `${cloudState.message}${t ? ' · checked ' + t : ''} · ${cloudState.env}`;
+        return;
+      }
       $('#ckBar').hidden = s !== 'out';
       $('#ckBtn').hidden = s !== 'in';
       if (s === 'error') toast('iCloud sync unavailable');
@@ -2463,6 +2497,11 @@ async function initCloud() {
   });
 }
 $('#ckBtn').onclick = () => { $('#ckMenu').hidden = !$('#ckMenu').hidden; };
+$('#ckSyncNow').onclick = async () => {
+  const b = $('#ckSyncNow'); b.disabled = true; b.textContent = 'Syncing…';
+  await syncNow();
+  b.disabled = false; b.textContent = 'Sync now';
+};
 init().then(initCloud).catch(e => { console.error(e); releaseView.innerHTML = '<div class="empty">Failed to start: ' + esc(e.message) + '</div>'; });
 
   </script>
