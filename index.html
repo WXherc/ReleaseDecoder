@@ -923,6 +923,16 @@ body {
    html[data-layout] = phone | tablet | desktop. Desktop keeps the width-based rules. */
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .topbar button { white-space: nowrap; }
+.seg-btn { display: inline-flex; align-items: center; gap: 6px; }
+.seg-btn svg { width: 16px; height: 16px; flex: none; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+#importBtn { width: auto; padding: 0 10px; }
+#importBtn svg { width: 18px; height: 18px; }
+/* departure runway / temp in the Ops card — phone only (other layouts show them in the airport tile) */
+.ops-dep { display: none; }
+.rwpill { display: inline-block; white-space: nowrap; margin-top: 2px; background: var(--accent-soft); color: var(--accent); border-radius: 999px;
+  padding: 3px 11px; font-size: 16px; font-weight: 800; }
+.ops-dep .sub { font-size: 13px; color: var(--secondary); font-weight: 700; }
 
 @media (max-width: 900px) {
   :root[data-layout="desktop"] .grid { grid-template-columns: 1fr; }
@@ -948,58 +958,91 @@ body {
 :root[data-layout="tablet"][data-orient="portrait"] .tps .row { flex-wrap: wrap; overflow: visible; gap: 14px 24px; }
 :root[data-layout="tablet"] .sec-btn { min-width: 0; padding: 12px 10px; }
 
-/* ---------- Phone — like the iPhone app ---------- */
+/* ---------- Phone — compressed like the iPhone app ---------- */
+/* top bar: Clear · icon-only tabs · import/appearance */
 :root[data-layout="phone"] .topbar { gap: 6px; padding-left: 10px; padding-right: 10px; }
-:root[data-layout="phone"] .seg { margin: 0 auto; }
-:root[data-layout="phone"] .seg-btn { font-size: 13px; padding: 6px 11px; }
-:root[data-layout="phone"] .pill { font-size: 13px; padding: 6px 11px; }
-:root[data-layout="phone"] .topbar-right { gap: 5px; }
-:root[data-layout="phone"] .icon-btn { width: auto; min-width: 34px; height: 32px; padding: 0 8px; font-size: 13px; }
+:root[data-layout="phone"] .seg { margin: 0 auto; padding: 3px; }
+:root[data-layout="phone"] .seg-btn { padding: 7px 16px; }
+:root[data-layout="phone"] .seg-btn span, :root[data-layout="phone"] #importBtn span { display: none; }
+:root[data-layout="phone"] .seg-btn svg { width: 21px; height: 21px; }
+:root[data-layout="phone"] .pill { font-size: 14px; padding: 7px 13px; }
+:root[data-layout="phone"] .topbar-right { gap: 2px; background: var(--inset); border-radius: 999px; padding: 2px; }
+:root[data-layout="phone"] .icon-btn { width: 38px; height: 34px; padding: 0; background: transparent; border-radius: 999px; font-size: 16px; }
+:root[data-layout="phone"] .icon-btn svg { width: 21px; height: 21px; }
 :root[data-layout="phone"] .sample-banner { font-size: 12px; padding: 6px 12px; }
 :root[data-layout="phone"] .view { padding: 8px 10px 40px; }
-:root[data-layout="phone"] .card { padding: 13px; border-radius: 16px; margin-bottom: 10px; }
-/* header: flight number + desk on one line, identity chips in one swipeable row beneath */
+:root[data-layout="phone"] .card { padding: 13px; border-radius: 18px; margin-bottom: 10px; }
+
+/* flight card: number + desk, identity chips, then ONE combined DEP | enroute | ARR block */
 :root[data-layout="phone"] .flight-head { flex-wrap: wrap; gap: 8px; }
 :root[data-layout="phone"] .flight-no { font-size: 24px; order: 0; }
 :root[data-layout="phone"] .flight-head .spacer { display: none; }
-:root[data-layout="phone"] .desk { order: 1; margin-left: auto; padding: 5px 10px; border-radius: 12px; }
+:root[data-layout="phone"] .desk { order: 1; margin-left: auto; padding: 5px 12px; border-radius: 12px; }
 :root[data-layout="phone"] .desk .label { font-size: 9px; }
-:root[data-layout="phone"] .desk .val { font-size: 15px; }
-:root[data-layout="phone"] .chips { order: 2; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; gap: 6px;
-  scrollbar-width: none; }
+:root[data-layout="phone"] .desk .val { font-size: 16px; }
+:root[data-layout="phone"] .chips { order: 2; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; gap: 6px; scrollbar-width: none; }
 :root[data-layout="phone"] .chips::-webkit-scrollbar { display: none; }
-:root[data-layout="phone"] .chip { flex: none; padding: 4px 9px; border-radius: 10px; min-width: 0; }
-:root[data-layout="phone"] .chip .val { font-size: 15px; }
-/* airports stacked, enroute as a slim strip between them */
-:root[data-layout="phone"] .airports { grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
-:root[data-layout="phone"] .ap { padding: 11px 12px; border-radius: 14px; gap: 10px; }
-:root[data-layout="phone"] .ap .code { font-size: 32px; }
-:root[data-layout="phone"] .ap-wx { margin-top: 8px; gap: 4px 14px; }
-:root[data-layout="phone"] .apx .v { font-size: 14px; }
-:root[data-layout="phone"] .ap .times .big { font-size: 19px; }
-:root[data-layout="phone"] .ap .times .z { font-size: 11px; }
+:root[data-layout="phone"] .chip { flex: none; padding: 3px 9px; border-radius: 10px; min-width: 0; }
+:root[data-layout="phone"] .chip .label { font-size: 9px; }
+:root[data-layout="phone"] .chip .val { font-size: 14px; }
+:root[data-layout="phone"] .airports { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 4px; margin-top: 10px; align-items: start; }
+:root[data-layout="phone"] .ap { background: none; padding: 0; border-radius: 0; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+:root[data-layout="phone"] .ap .label, :root[data-layout="phone"] .ap-wx { display: none; }
+:root[data-layout="phone"] .ap-left { display: flex; align-items: baseline; gap: 6px; }
+:root[data-layout="phone"] .ap .code { font-size: 34px; letter-spacing: -.5px; }
+:root[data-layout="phone"] .ap .icao { font-size: 12px; margin: 0; }
+:root[data-layout="phone"] .ap-right { align-items: flex-start; gap: 8px; width: 100%; }
 :root[data-layout="phone"] .tile { padding: 4px 8px; min-width: 38px; border-radius: 10px; }
 :root[data-layout="phone"] .tile .v { font-size: 16px; }
-:root[data-layout="phone"] .enroute { display: flex; align-items: center; justify-content: center; gap: 8px; }
-:root[data-layout="phone"] .enroute .big { font-size: 17px; }
-:root[data-layout="phone"] .enroute .plane { margin: 0 6px; font-size: 15px; }
-/* TPS: runway picker on top, values wrap onto two lines (no sideways scrolling) */
-:root[data-layout="phone"] .tps { flex-direction: column; gap: 10px; }
-:root[data-layout="phone"] .tps .divider { display: none; }
-:root[data-layout="phone"] .tps select { font-size: 18px; padding: 5px 8px; }
-:root[data-layout="phone"] .tps .row { flex-wrap: wrap; overflow: visible; gap: 10px 18px; }
-:root[data-layout="phone"] .tps .grp { gap: 12px; }
-:root[data-layout="phone"] .stat .v { font-size: 16px; }
-:root[data-layout="phone"] .statrow .stat .v { font-size: 19px; }
-/* route: map button under the text */
-:root[data-layout="phone"] .route { gap: 8px; }
+:root[data-layout="phone"] .ap .times { justify-content: start; text-align: left; gap: 4px 6px; }
+:root[data-layout="phone"] .ap .times > div { display: flex; flex-direction: column; line-height: 1.1; }
+:root[data-layout="phone"] .ap .times .big { font-size: 19px; }
+:root[data-layout="phone"] .ap .times .z { font-size: 12px; }
+:root[data-layout="phone"] .ap .times .k { font-size: 9.5px; }
+/* arrival mirrors the departure: ICAO before the code, everything right-aligned, labels on the right */
+:root[data-layout="phone"] .airports > .ap:last-child { align-items: flex-end; }
+:root[data-layout="phone"] .airports > .ap:last-child .ap-left { flex-direction: row-reverse; }
+:root[data-layout="phone"] .airports > .ap:last-child .ap-right { align-items: flex-end; }
+:root[data-layout="phone"] .airports > .ap:last-child .times { grid-auto-flow: dense; justify-content: end; text-align: right; }
+:root[data-layout="phone"] .airports > .ap:last-child .times .k { grid-column: 2; }
+:root[data-layout="phone"] .airports > .ap:last-child .times > div { grid-column: 1; align-items: flex-end; }
+:root[data-layout="phone"] .enroute { padding-top: 46px; }
+:root[data-layout="phone"] .enroute .big { font-size: 18px; }
+:root[data-layout="phone"] .enroute .k { font-size: 9px; }
+:root[data-layout="phone"] .enroute .plane { margin: 4px 0; font-size: 15px; }
+
+/* TPS lives behind the TPS button on the phone (like the app) */
+:root[data-layout="phone"] .card.tps { display: none; }
+:root[data-layout="phone"] .route { gap: 10px; flex-wrap: nowrap; padding: 11px 13px; }
 :root[data-layout="phone"] .route .txt { font-size: 12px; min-width: 0; }
-:root[data-layout="phone"] .grid { grid-template-columns: 1fr; gap: 10px; }
-/* bottom bar: compact icon-over-label buttons so they all fit */
+:root[data-layout="phone"] .route .map-btn { display: none; }
+
+/* Aircraft | Weights side by side, Ops full width below */
+:root[data-layout="phone"] .grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
+:root[data-layout="phone"] .grid > .card:nth-child(3) { grid-column: 1 / -1; }
+:root[data-layout="phone"] .grid .card { margin: 0; }
+:root[data-layout="phone"] .stat .v { font-size: 18px; }
+:root[data-layout="phone"] .statrow { gap: 8px; }
+:root[data-layout="phone"] .statrow .stat .v { font-size: 17px; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .card-head .label { display: none; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .card-head::before { content: '⚖'; font-size: 18px; color: var(--accent); }
+:root[data-layout="phone"] .ci { white-space: nowrap; font-size: 13px; padding: 3px 10px; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) { flex-wrap: nowrap; gap: 8px; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat .v { font-size: 16px; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat:nth-child(3) .v { font-size: 13px; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .hr ~ .statrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+:root[data-layout="phone"] .eaml-btn { font-size: 14px; padding: 10px; }
+:root[data-layout="phone"] .grid > .card:nth-child(3) { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 14px; }
+:root[data-layout="phone"] .grid > .card:nth-child(3) .card-head { flex-basis: 100%; }
+:root[data-layout="phone"] .grid > .card:nth-child(3) .statrow { flex: 1; }
+:root[data-layout="phone"] .grid > .card:nth-child(3) .statrow .stat:empty { display: none; }
+:root[data-layout="phone"] .ops-dep { display: flex; gap: 14px; flex: 1; border-left: 1px solid var(--hairline); padding-left: 14px; }
+
+/* bottom bar: 7 icon-over-label buttons */
 :root[data-layout="phone"] .sec-bar { gap: 5px; margin: 8px -10px -40px; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); }
-:root[data-layout="phone"] .sec-btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; padding: 7px 2px;
-  font-size: 10.5px; border-radius: 12px; }
-:root[data-layout="phone"] .sec-btn svg { width: 19px; height: 19px; }
+:root[data-layout="phone"] .sec-btn { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 3px; padding: 8px 1px;
+  font-size: 9.5px; letter-spacing: -.2px; border-radius: 12px; }
+:root[data-layout="phone"] .sec-btn svg { width: 20px; height: 20px; }
 :root[data-layout="phone"] .raw-tools .sec-btn { flex: none; flex-direction: row; padding: 7px 11px; font-size: 13px; }
 :root[data-layout="phone"] .sheet-backdrop { padding: 10px; }
 
@@ -1015,11 +1058,11 @@ body {
   <header class="topbar">
     <button id="clearBtn" class="pill ghost">Clear</button>
     <div class="seg" role="tablist">
-      <button id="tabRelease" class="seg-btn active" role="tab">MyRelease</button>
-      <button id="tabRaw" class="seg-btn" role="tab">Raw PDF</button>
+      <button id="tabRelease" class="seg-btn active" role="tab" aria-label="MyRelease"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>MyRelease</span></button>
+      <button id="tabRaw" class="seg-btn" role="tab" aria-label="Raw PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><rect x="8" y="6" width="8" height="6" rx="1"/><path d="M8 15.5h8M8 18.5h5"/></svg><span>Raw PDF</span></button>
     </div>
     <div class="topbar-right">
-      <button id="importBtn" class="icon-btn" title="Import release">＋PDF</button>
+      <button id="importBtn" class="icon-btn" title="Import release" aria-label="Import release"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2.5H8a2.5 2.5 0 0 0-2.5 2.5v6M14 2.5V8h5.5M14 2.5 19.5 8v11a2.5 2.5 0 0 1-2.5 2.5h-4"/><circle cx="7" cy="17.5" r="4.5"/><path d="M7 15.5v4M5 17.5h4"/></svg><span>PDF</span></button>
       <button id="themeBtn" class="icon-btn" title="Appearance">◐</button>
     </div>
     <input id="fileInput" type="file" accept="application/pdf" hidden />
@@ -1748,6 +1791,7 @@ const SEC_ICON = {
   'Flight Plan': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   'MEL/SEL':     '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>',
   'Nav Log':     '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/>',
+  'Route Chart': '<path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6z"/><path d="M9 4v14M15 6v14"/>',
   'Crew':        '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.4A5 5 0 0 1 21 19"/>',
 };
 const SEC_LABEL = { 'Crew': 'Crew List' };
@@ -1907,6 +1951,10 @@ function renderRelease() {
         <div class="stat"><span class="k">Altn Fuel</span><span class="v mono">${esc(p.altnFuel || '--')}</span></div>
         <div class="stat"></div>
       </div>
+      ${(depRwy || (depWx && (depWx.temp || depWx.altim))) ? `<div class="ops-dep">
+        ${depRwy ? `<div class="stat"><span class="k">Rwy · <span class="accent">${esc(p.depICAO || '')}</span></span><span class="rwpill mono">${esc(depRwy)}</span></div>` : ''}
+        ${depWx && (depWx.temp || depWx.altim) ? `<div class="stat"><span class="k">Temp / Altim</span><span class="v mono">${esc(depWx.temp || '—')}</span><span class="sub mono">${esc(depWx.altim || '')}</span></div>` : ''}
+      </div>` : ''}
     </div>
   </div>
 
@@ -1924,6 +1972,11 @@ function renderRelease() {
     for (const s of (state._sections || [])) {
       const b = secButton(s);
       b.onclick = () => showSection(s.name);
+      bar.appendChild(b);
+    }
+    if (p.routeWaypoints && p.routeWaypoints.length) {     // Route Chart, like the app's last button
+      const b = secButton({ name: 'Route Chart' });
+      b.onclick = () => showRouteMap();
       bar.appendChild(b);
     }
   }
