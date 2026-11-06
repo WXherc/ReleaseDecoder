@@ -1769,11 +1769,12 @@ async function fetchMETAR(icao) {
 
 // ================= cloud.js =================
 // cloud.js — mirror the iOS app's current release from iCloud (CloudKit JS).
-// The app keeps ONE record in the user's private database: type CurrentRelease,
-// recordName "current-release", fields asset (the release PDF), flight, updatedAt.
-// The web follows it read-only: sign in with the same Apple ID, and whenever the
-// app imports a newer release the page loads it (checked on open, when the tab comes
-// back to the foreground, and every minute while visible — no background traffic).
+// iCloud keeps exactly ONE release: a single record in the user's private database
+// (type CurrentRelease, recordName "current-release", fields asset = the PDF, flight,
+// updatedAt), overwritten by every import on any device — the last import wins.
+// The web follows it (checked on open, when the tab comes back to the foreground, and
+// every minute while visible — no background traffic) and an import on the web
+// overwrites it, so the iPhone / iPad app mirrors the web too.
 //
 // Dormant until CK.apiToken is set. The token is NOT a secret: CloudKit only accepts
 // it from the allowed origin set on it, and every read needs the user's Apple ID.
@@ -1788,7 +1789,7 @@ const CK = {
 const POLL_MS = 60000;
 
 let container = null, lastStamp = 0, timer = null, onVisible = null, applyFn = null, statusFn = () => {};
-let env = 'development';
+let env = 'development', signedInNow = false;
 // Last check result, shown in the iCloud menu so a failed sync is visible, not silent.
 const cloudState = { env: '', lastCheck: null, message: 'Not checked yet' };
 function report(msg) { cloudState.lastCheck = new Date(); cloudState.message = msg; statusFn('report'); }
@@ -1825,18 +1826,49 @@ async function startCloudSync({ onRelease, onStatus, stamp = 0 }) {
     });
     container = CloudKit.getDefaultContainer();
     const signedIn = async () => {
+      signedInNow = true;
       onStatus('in');
       await check(onRelease);
       arm(onRelease);
-      container.whenUserSignsOut().then(() => { disarm(); waitForSignIn(); });
+      container.whenUserSignsOut().then(() => { signedInNow = false; disarm(); waitForSignIn(); });
     };
     const waitForSignIn = () => { onStatus('out'); container.whenUserSignsIn().then(signedIn).catch(() => {}); };
     (await container.setUpAuth()) ? signedIn() : waitForSignIn();
   } catch (e) { console.warn('cloudkit', e); onStatus('error'); }
 }
 
-// The web's own imports win until the app imports something newer.
+// A release imported on the web (when not signed in it simply stays local until the
+// next upload from any device replaces it).
 function markLocal(stamp) { lastStamp = Math.max(lastStamp, stamp); }
+
+// Upload a release imported on the web as THE current release (overwrites the one record).
+async function uploadRelease(bytes, flight) {
+  if (!container || !signedInNow) return false;
+  const db = container.privateCloudDatabase;
+  const stamp = Date.now();
+  try {
+    const cur = await db.fetchRecords(['current-release']);
+    const changeTag = !cur.hasErrors && cur.records[0] ? cur.records[0].recordChangeTag : undefined;
+    const rec = {
+      recordType: 'CurrentRelease', recordName: 'current-release',
+      fields: {
+        asset: { value: new File([bytes], 'release.pdf', { type: 'application/pdf' }) },
+        flight: { value: String(flight || ''), type: 'STRING' },
+        updatedAt: { value: stamp, type: 'TIMESTAMP' },
+      },
+    };
+    if (changeTag) rec.recordChangeTag = changeTag;
+    const r = await db.saveRecords([rec]);
+    if (r.hasErrors) {
+      const e = r.errors[0] || {};
+      report(`Upload failed: ${e.ckErrorCode || e.serverErrorCode || 'ERROR'}${e.reason ? ' — ' + e.reason : ''}`);
+      return false;
+    }
+    lastStamp = stamp;
+    report(`Shared Flight ${flight || '?'} to your devices`);
+    return true;
+  } catch (e) { console.warn('cloudkit', e); report(`Upload failed: ${e && e.message ? e.message : e}`); return false; }
+}
 
 // Manual "Sync now": ignores the hidden-tab guard and the newest-wins stamp check.
 function syncNow() { return check(applyFn, true); }
@@ -2435,6 +2467,8 @@ async function importFile(file) {
     await idbSet('release', bytes); await idbSet('isSample', false);
     const now = Date.now(); markLocal(now); await idbSet('cloudStamp', now);
     toast('Release imported');
+    // the last import on ANY device is the one shared release: replace it in iCloud
+    if (await uploadRelease(bytes, state.parsed && state.parsed.flightNumber)) toast('Release imported · shared via iCloud');
   } catch (e) { console.error(e); toast('Could not read that PDF'); }
 }
 
