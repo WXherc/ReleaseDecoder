@@ -1068,6 +1068,35 @@ body {
 #ckBtn.off { color: var(--secondary); }
 #ckBtn.off svg path:last-child { display: none; }
 
+/* ---- bottom bar pinned to the screen edge on phone + iPad ----
+   iPhone Safari shrinks the whole page when anything is wider than the screen, and a
+   sticky bar then pins to the old (smaller) edge and "rides up". So: nothing may be wider
+   than the screen, and on touch devices the bar is position:fixed, with room reserved
+   under the content so the last card isn't hidden behind it. */
+html, body { overflow-x: clip; }
+.view, .card, .grid > *, .airports > * { min-width: 0; }
+.statrow .stat { min-width: 0; }
+:root[data-layout="phone"] #releaseView > .sec-bar,
+:root[data-layout="tablet"] #releaseView > .sec-bar {
+  position: fixed; left: env(safe-area-inset-left); right: env(safe-area-inset-right); bottom: 0;
+  margin: 0; z-index: 30;
+}
+:root[data-layout="phone"] #releaseView:not([hidden]),
+:root[data-layout="tablet"] #releaseView:not([hidden]) {
+  min-height: 0; padding-bottom: calc(var(--secbar-h, 72px) + 12px);
+}
+/* Weights card on the phone: PTOW / ATOW / MTOW share the row and shrink to fit */
+:root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat { flex: 1 1 0; }
+:root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat .k { white-space: normal; }
+/* very narrow phones (≤ 380 px): shrink the Weights row and bar labels instead of overflowing */
+@media (max-width: 380px) {
+  :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) { gap: 6px; }
+  :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat .k { font-size: 9.5px; letter-spacing: 0; }
+  :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat .v { font-size: 14px; }
+  :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat:nth-child(3) .v { font-size: 12px; }
+  :root[data-layout="phone"] .sec-btn { font-size: 8.5px; letter-spacing: -.3px; }
+}
+
   </style>
 </head>
 <body>
@@ -2162,6 +2191,8 @@ function renderRelease() {
   if (mapBtn) mapBtn.onclick = () => showRouteMap();
   // section buttons (open a popup excerpt of the raw PDF, like the native app)
   const bar = releaseView.querySelector('#secBar');
+  // room under the content for the fixed bottom bar (its height varies with layout)
+  requestAnimationFrame(() => document.documentElement.style.setProperty('--secbar-h', ((bar && bar.offsetHeight) || 0) + 'px'));
   if (bar) {
     for (const s of (state._sections || [])) {
       const b = secButton(s);
