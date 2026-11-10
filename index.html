@@ -21,7 +21,11 @@
       if (q) dev = q;
       d.dataset.device = dev;
       function layout() {
-        var open = dev === 'phone' && Math.min(screen.width, screen.height) >= 560 && innerWidth >= 560;
+        // Safari on the foldable can keep reporting the COVER screen's size in screen.*,
+        // so also trust the real window: open = over 600 wide AND over 500 tall (the cover
+        // screen is ~466 on its short side, regular iPhones <= 440).
+        var open = dev === 'phone' && ((Math.min(screen.width, screen.height) >= 560 && innerWidth >= 560)
+          || (innerWidth >= 600 && innerHeight >= 500));
         d.dataset.fold = open ? 'open' : '';
         d.dataset.layout = dev === 'desktop' ? 'desktop'
           : open ? 'tablet' : (dev === 'phone' || innerWidth < 600) ? 'phone' : 'tablet';
@@ -2216,7 +2220,7 @@ function renderRelease() {
   // section buttons (open a popup excerpt of the raw PDF, like the native app)
   const bar = releaseView.querySelector('#secBar');
   // room under the content for the fixed bottom bar (its height varies with layout)
-  requestAnimationFrame(() => document.documentElement.style.setProperty('--secbar-h', ((bar && bar.offsetHeight) || 0) + 'px'));
+  requestAnimationFrame(() => { document.documentElement.style.setProperty('--secbar-h', ((bar && bar.offsetHeight) || 0) + 'px'); placeSecBar(); });
   if (bar) {
     for (const s of (state._sections || [])) {
       const b = secButton(s);
@@ -2583,6 +2587,48 @@ async function init() {
     if (stored) { await loadBytes(stored, { isSample: await idbGet('isSample') || false }); return; }
   } catch (e) { console.warn('idb', e); }
   await loadSample();
+}
+
+// ---------- bottom bar placement ----------
+// position:fixed pins to Safari's LAYOUT viewport, which on some devices (zoomed-out pages,
+// the foldable iPhone's inner screen) is shorter than what's actually visible — the bar then
+// "rides up". Anchor it to the VISUAL viewport's bottom instead whenever the two differ.
+function placeSecBar() {
+  const bar = document.querySelector('#releaseView > .sec-bar');
+  if (!bar || getComputedStyle(bar).position !== 'fixed') return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const gap = innerHeight - (vv.offsetTop + vv.height);   // >0 visual bottom above layout bottom, <0 below
+  if (Math.abs(gap) < 1) { bar.style.top = ''; bar.style.bottom = ''; return; }
+  bar.style.bottom = 'auto';
+  bar.style.top = (vv.offsetTop + vv.height - bar.offsetHeight) + 'px';
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', placeSecBar); visualViewport.addEventListener('scroll', placeSecBar); }
+addEventListener('resize', placeSecBar);
+addEventListener('scroll', placeSecBar, { passive: true });
+
+// ---------- ?debug=1: what the browser reports (screen / window / viewport / layout) ----------
+if (/[?&]debug=1/.test(location.search)) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:6px;top:6px;z-index:999;max-width:94vw;background:rgba(0,0,0,.82);color:#7CFC8A;' +
+    'font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px 10px;border-radius:10px;white-space:pre-wrap;pointer-events:auto';
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.append(box, probe);
+  const show = () => {
+    const d = document.documentElement, vv = window.visualViewport || {}, ps = getComputedStyle(probe);
+    const bar = document.querySelector('.sec-bar'), br = bar ? bar.getBoundingClientRect() : null;
+    box.textContent =
+      `layout ${d.dataset.layout} · device ${d.dataset.device} · fold ${d.dataset.fold || '-'} · ${d.dataset.orient}\n` +
+      `screen ${screen.width}x${screen.height} · avail ${screen.availWidth}x${screen.availHeight} · dpr ${devicePixelRatio}\n` +
+      `inner ${innerWidth}x${innerHeight} · outer ${outerWidth}x${outerHeight} · client ${d.clientWidth}x${d.clientHeight}\n` +
+      `visual ${Math.round(vv.width)}x${Math.round(vv.height)} @${vv.scale} top ${Math.round(vv.offsetTop)} page ${Math.round(vv.pageTop)}\n` +
+      `safe T${ps.paddingTop} R${ps.paddingRight} B${ps.paddingBottom} L${ps.paddingLeft}\n` +
+      `bar ${br ? Math.round(br.top) + '–' + Math.round(br.bottom) : '-'} · scrollW ${d.scrollWidth}\n` +
+      navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 110) + '\n(tap to hide)';
+  };
+  box.onclick = () => box.remove();
+  show(); setInterval(show, 1000);
 }
 
 // ---------- iCloud mirror (follow the iPhone / iPad app's current release) ----------
