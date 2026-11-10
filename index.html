@@ -7,6 +7,9 @@
     // Device detection -> <html data-device="phone|tablet|desktop">, and the layout to use
     // -> data-layout (a tablet in a narrow Split View / Slide Over window uses the phone
     // layout). iPadOS Safari reports itself as a Mac, so "Mac + multi-touch" = iPad.
+    // A foldable iPhone ("Duo") opened up uses its big inner display (~669 x 951 pt): any
+    // phone whose current screen is at least 560 pt on its short side gets the iPad layout
+    // (the cover screen is ~466 pt, regular iPhones <= 440) — re-checked on every fold/rotate.
     // Override for testing: ?device=phone|tablet|desktop
     (function () {
       var d = document.documentElement, ua = navigator.userAgent, touch = navigator.maxTouchPoints || 0;
@@ -18,10 +21,19 @@
       if (q) dev = q;
       d.dataset.device = dev;
       function layout() {
-        d.dataset.layout = dev === 'desktop' ? 'desktop' : (dev === 'phone' || innerWidth < 600) ? 'phone' : 'tablet';
+        var open = dev === 'phone' && Math.min(screen.width, screen.height) >= 560 && innerWidth >= 560;
+        d.dataset.fold = open ? 'open' : '';
+        d.dataset.layout = dev === 'desktop' ? 'desktop'
+          : open ? 'tablet' : (dev === 'phone' || innerWidth < 600) ? 'phone' : 'tablet';
         d.dataset.orient = innerWidth > innerHeight ? 'landscape' : 'portrait';
       }
-      layout(); addEventListener('resize', layout);
+      layout(); addEventListener('resize', layout); addEventListener('orientationchange', layout);
+      if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', layout);
+      // backups for a fold/unfold: the viewport crossing 560/600 px, or the visual viewport resizing
+      ['(min-width: 560px)', '(min-width: 600px)', '(orientation: landscape)'].forEach(function (q) {
+        var m = matchMedia(q); if (m.addEventListener) m.addEventListener('change', layout);
+      });
+      if (window.visualViewport) visualViewport.addEventListener('resize', layout);
     })();
   </script>
   <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
@@ -1095,6 +1107,18 @@ html, body { overflow-x: clip; }
   :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat .v { font-size: 14px; }
   :root[data-layout="phone"] .grid > .card:nth-child(2) .statrow:not(.hr ~ .statrow) .stat:nth-child(3) .v { font-size: 12px; }
   :root[data-layout="phone"] .sec-btn { font-size: 8.5px; letter-spacing: -.3px; }
+}
+
+/* keep content clear of side sensor bands (foldable cover screen, landscape notches) */
+:root[data-layout="phone"] .view { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+:root[data-layout="tablet"] .view { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+.topbar { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+/* iPad layout on a narrower screen (open foldable portrait ~669 pt, small iPads in portrait):
+   icon-over-label section buttons so all seven fit */
+@media (max-width: 820px) {
+  :root[data-layout="tablet"] .sec-btn { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: 12px; min-width: 0; }
+  :root[data-layout="tablet"] .sec-btn svg { width: 21px; height: 21px; }
+  :root[data-layout="tablet"] .sec-bar { gap: 6px; }
 }
 
   </style>
